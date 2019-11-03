@@ -128,3 +128,89 @@ void Network::print_traj(const int time, const std::map<std::string, size_t> &_n
             }
     (*_out) << std::endl;
 }
+
+
+std::pair<size_t, double> Network::degree(const size_t& n) const
+{
+	std::pair<size_t, double> deg;
+	size_t number_connections(neighbors(n).size());
+	double tot_intensity;
+	
+	for(auto connexion : neighbors(n))
+	{
+		tot_intensity += connexion.second;
+	}
+	
+	deg = std::make_pair(number_connections, tot_intensity);
+	
+	return deg;
+}
+
+//std::set is a container that stores unique elements following a specific order : 
+std::set<size_t> Network::step(const std::vector<double>& thalamic_inputs)
+{
+	std::set<size_t> firing_neurons;
+	
+	//Fills the set with the indices of firing neurons
+	for(size_t n(0); n < neurons.size(); ++n) {
+		if(neurons[n].firing()) {
+			firing_neurons.insert(n);
+			neurons[n].reset(); //after a neuron fired it is reset
+		
+		} else { //only non firing neurons are reset
+		
+		//Evolution of the neuron's intensity :
+		
+		std::vector<std::pair<size_t, double>> connected_neurons(neighbors(n));
+		double noise(thalamic_inputs[n]);
+		double new_intensity;
+		
+		//each neuron receives an input from firing connected neurons :
+		
+		for(auto neighbor : connected_neurons) {
+			if(!neurons[neighbor.first].is_inhibitory()) {
+				new_intensity += 0.5*neighbor.second;
+			}
+			
+			else if(neurons[neighbor.first].is_inhibitory()) {
+				new_intensity -= neighbor.second;
+			}
+		}
+		
+		if(neurons[n].is_inhibitory()) {
+			noise *= 0.4;
+		}
+		
+	//Intakes the new calculated input in neuron n
+	neurons[n].input(noise + new_intensity);
+	
+	//Update of the neuron's potential and recovery according to Izhikevich equations :
+	neurons[n].step();
+		}
+	}
+	
+	return firing_neurons;
+}
+
+
+//Finds the list of neurons connected to the neuron studied of index n
+std::vector<std::pair<size_t, double> > Network::neighbors(const size_t& n) const
+{
+	std::vector<std::pair<size_t, double> > connected_neurons;
+	
+	//For 2 neurones to be connected, the index of the first neuron (n) must be equal to
+	// the first value in the pair of the linkmap corresponding to the same index.
+	//Using the map iterators optimises the program, making it much faster than iterating on the linkmap
+	
+	std::map<std::pair<size_t, size_t>, double>::const_iterator low_iterator;
+	std::map<std::pair<size_t, size_t>, double>::const_iterator up_iterator;
+	
+	low_iterator = links.lower_bound(std::make_pair(n,0)); //pair between the neuron n and any other neuron : (n,0), the second index doesn't matter
+	up_iterator = links.upper_bound(std::make_pair(n,0));
+	
+	for(low_iterator; low_iterator != up_iterator; ++low_iterator) {
+		connected_neurons.push_back(std::make_pair(low_iterator->first.second, low_iterator->second)); //first.second = index of neuron connected to neuron n and low_iterator->second = intensity of connection 
+	}
+	
+	return connected_neurons;
+}
